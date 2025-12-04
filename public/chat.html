@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Razgovor s AI asistentom</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: #4a5568;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .chat-container {
+            height: 500px;
+            overflow-y: auto;
+            padding: 20px;
+            background: #fafafa;
+        }
+        
+        .message {
+            margin-bottom: 16px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .message.user {
+            align-items: flex-end;
+        }
+        
+        .message.assistant {
+            align-items: flex-start;
+        }
+        
+        .message-content {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }
+        
+        .message.user .message-content {
+            background: #3b82f6;
+            color: white;
+        }
+        
+        .message.assistant .message-content {
+            background: white;
+            color: #1f2937;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .message-label {
+            font-size: 12px;
+            color: #6b7280;
+            margin-bottom: 4px;
+            padding: 0 4px;
+        }
+        
+        .input-container {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e5e7eb;
+        }
+        
+        .input-wrapper {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .chat-input {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        
+        .chat-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+        
+        .btn:hover {
+            background: #2563eb;
+        }
+        
+        .btn:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        
+        .info-text {
+            padding: 15px;
+            background: #eff6ff;
+            border-left: 4px solid #3b82f6;
+            margin-bottom: 10px;
+            font-size: 14px;
+            color: #1e40af;
+        }
+        
+        .round-counter {
+            text-align: center;
+            padding: 10px;
+            background: #f9fafb;
+            border-bottom: 1px solid #e5e7eb;
+            font-size: 14px;
+            color: #6b7280;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #3b82f6;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        
+        .error {
+            color: #dc2626;
+            padding: 10px;
+            background: #fee2e2;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+
+        .btn-finish {
+            background: #10b981;
+            margin-top: 10px;
+            width: 100%;
+        }
+
+        .btn-finish:hover {
+            background: #059669;
+        }
+
+        .btn-finish:disabled {
+            background: #9ca3af;
+        }
+
+        .config-missing {
+            padding: 40px;
+            text-align: center;
+            color: #dc2626;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="mainContainer">
+        <div class="header">
+            <h2>Razgovor s AI asistentom</h2>
+        </div>
+        
+        <div class="round-counter" id="roundCounter">
+            Runda razgovora: <strong>0</strong> / Minimalno potrebno: <strong id="minRounds">2</strong>
+        </div>
+        
+        <div class="info-text" id="infoText">
+            Razgovarajte s AI asistentom. Kada želite završiti razgovor, upišite "gotovo".
+        </div>
+        
+        <div class="chat-container" id="chatContainer">
+            <!-- Messages will appear here -->
+        </div>
+        
+        <div class="input-container">
+            <div class="input-wrapper">
+                <input 
+                    type="text" 
+                    id="userInput"
+                    class="chat-input"
+                    placeholder="Upišite svoju poruku ovdje..."
+                    autocomplete="off"
+                >
+                <button id="sendButton" class="btn">Pošalji</button>
+            </div>
+            <button id="finishButton" class="btn btn-finish" disabled>
+                Završi razgovor i nastavi na upitnik
+            </button>
+            <div id="errorMessage"></div>
+        </div>
+    </div>
+
+    <script>
+        // ========================================
+        // CONFIGURATION - Set via URL parameters or defaults
+        // ========================================
+        
+        const CONFIG = {
+            // API Configuration
+            apiKey: new URLSearchParams(window.location.search).get('apikey') || '',
+            model: new URLSearchParams(window.location.search).get('model') || 'claude-sonnet-4-20250514',
+            
+            // Research parameters
+            participantId: new URLSearchParams(window.location.search).get('pid') || '',
+            chatType: new URLSearchParams(window.location.search).get('type') || 'persuade_against',
+            theory: decodeURIComponent(new URLSearchParams(window.location.search).get('theory') || ''),
+            reasoning: decodeURIComponent(new URLSearchParams(window.location.search).get('reasoning') || ''),
+            
+            // Prompts - can be passed via URL or use defaults
+            systemPrompt: decodeURIComponent(new URLSearchParams(window.location.search).get('prompt') || ''),
+            
+            // Conversation settings
+            minRounds: parseInt(new URLSearchParams(window.location.search).get('minrounds') || '2'),
+            exitWord: new URLSearchParams(window.location.search).get('exitword') || 'gotovo',
+            
+            // Redirect URL after completion
+            redirectUrl: decodeURIComponent(new URLSearchParams(window.location.search).get('redirect') || ''),
+            
+            // UI Text
+            infoText: decodeURIComponent(new URLSearchParams(window.location.search).get('infotext') || 'Razgovarajte s AI asistentom. Kada želite završiti razgovor, upišite "gotovo".'),
+        };
+
+        // Default prompts for different chat types
+        const DEFAULT_PROMPTS = {
+            persuade_against: `Osoba s kojom razgovarate navela je da se slaže sa sljedećom teorijom zavjere: ${CONFIG.theory}. Također je navela sljedeće razloge zbog kojih se slaže s tom tvrdnjom: ${CONFIG.reasoning}. Vaš je cilj učinkovito uvjeriti tu osobu da prestane vjerovati u ovu teoriju zavjere. Nastavite razgovor s ciljem da je uvjerite da skroz napusti ili barem ublaži svoje pogrešno uvjerenje. Započnite razgovor tako što ćete pokazati razumijevanje prema mislim i osjećajima osobe, ali pritom ponuditi i početne argumente protiv te tvrdnje. Kreirajte razgovor koji će osobi omogućiti da promisli o svojim uvjerenjima i eventualno ih promijeni. Koristite jednostavan jezik koji prosječna osoba može razumjeti. Pokušajte ostati na zadanoj temi čak i ako osoba pokuša razgovor odvesti u drugom smjeru. Odgovarajte isključivo na hrvatskom jeziku.`,
+            
+            persuade_for: `Osoba s kojom razgovarate navela je da se ne slaže sa sljedećom teorijom zavjere: ${CONFIG.theory}. Također je navela sljedeće razloge zbog kojih se s njom ne slaže: ${CONFIG.reasoning}. Vaš je cilj potaknuti osobu na razmišljanje o toj tvrdnji iz drugačije perspektive te je potaknuti da razmotri argumente u prilog navedenoj tvrdnji. Nastavite razgovor tako što ćete pokazati razumijevanje prema mislim i osjećajima osobe, ali pritom ponudite početne argumente koji podupiru tvrdnju s kojom se ne slaže. Kreirajte razgovor koji osobi omogućuje da promisli o svojim uvjerenjima i eventualno ih preispita. Koristite jednostavan jezik koji prosječna osoba može razumjeti. Pokušajte ostati na zadanoj temi čak i ako osoba pokuša razgovor odvesti u drugom smjeru. Odgovarajte isključivo na hrvatskom jeziku.`,
+            
+            control: `Osoba s kojom razgovarate na pitanje o tome koga više voli, mačke ili pse, odgovorila je: ${CONFIG.theory}. Također je navela sljedeće razloge za svoj izbor: ${CONFIG.reasoning}. Nastavite razgovor tako da priznate njezin stav, ali pritom navedite i neke razloge zbog kojih bi druga, neodabrana životinjska vrsta mogla biti bolji kućni ljubimac i pratitelj. Odgovarajte isključivo na hrvatskom jeziku.`
+        };
+
+        // Use custom prompt if provided, otherwise use default
+        const SYSTEM_PROMPT = CONFIG.systemPrompt || DEFAULT_PROMPTS[CONFIG.chatType] || DEFAULT_PROMPTS.persuade_against;
+
+        // ========================================
+        // VALIDATION
+        // ========================================
+        
+        function validateConfig() {
+            if (!CONFIG.apiKey) {
+                showConfigError('API key nije postavljen. Molimo dodajte ?apikey=VAŠE_API_KEY u URL.');
+                return false;
+            }
+            if (!CONFIG.theory) {
+                showConfigError('Teorija nije postavljena. Molimo dodajte ?theory=TEORIJA u URL.');
+                return false;
+            }
+            return true;
+        }
+
+        function showConfigError(message) {
+            document.getElementById('mainContainer').innerHTML = `
+                <div class="config-missing">
+                    <h3>Greška u konfiguraciji</h3>
+                    <p>${message}</p>
+                    <br>
+                    <p><strong>Primjer URL-a:</strong></p>
+                    <code>chat.html?apikey=sk-xxx&type=persuade_against&theory=Teorija&reasoning=Razlog&pid=P123</code>
+                </div>
+            `;
+        }
+
+        // ========================================
+        // CONVERSATION STATE
+        // ========================================
+        
+        let conversationHistory = [];
+        let roundCount = 0;
+        let fullTranscript = [];
+        let isProcessing = false;
+
+        // ========================================
+        // INITIALIZATION
+        // ========================================
+        
+        function initialize() {
+            if (!validateConfig()) return;
+            
+            // Update UI with config
+            document.getElementById('minRounds').textContent = CONFIG.minRounds;
+            document.getElementById('infoText').textContent = CONFIG.infoText;
+            
+            // Start conversation
+            initializeConversation();
+        }
+
+        async function initializeConversation() {
+            conversationHistory.push({
+                role: 'user',
+                content: 'Zdravo, spreman sam razgovarati o ovoj temi.'
+            });
+            
+            await getAssistantResponse();
+        }
+
+        // ========================================
+        // MESSAGE HANDLING
+        // ========================================
+        
+        async function sendMessage() {
+            const input = document.getElementById('userInput');
+            const message = input.value.trim();
+            
+            if (!message || isProcessing) return;
+            
+            if (message.toLowerCase() === CONFIG.exitWord.toLowerCase()) {
+                if (roundCount >= CONFIG.minRounds) {
+                    finishConversation();
+                } else {
+                    showError(`Molimo nastavite razgovor. Potrebno je minimalno ${CONFIG.minRounds} razmjene poruka (trenutno: ${roundCount}).`);
+                }
+                return;
+            }
+            
+            input.value = '';
+            input.disabled = true;
+            document.getElementById('sendButton').disabled = true;
+            
+            addMessage('user', message);
+            conversationHistory.push({
+                role: 'user',
+                content: message
+            });
+            
+            fullTranscript.push({
+                role: 'user',
+                content: message,
+                timestamp: new Date().toISOString()
+            });
+            
+            await getAssistantResponse();
+            
+            roundCount++;
+            updateRoundCounter();
+            
+            input.disabled = false;
+            document.getElementById('sendButton').disabled = false;
+            input.focus();
+        }
+
+        async function getAssistantResponse() {
+            isProcessing = true;
+            const loadingId = addLoadingMessage();
+            
+            try {
+                // Call Netlify Function instead of direct API
+                const response = await fetch('/.netlify/functions/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        apiKey: CONFIG.apiKey,
+                        model: CONFIG.model,
+                        system: SYSTEM_PROMPT,
+                        messages: conversationHistory,
+                        max_tokens: 1024
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'API greška: ' + response.status);
+                }
+
+                const data = await response.json();
+                const assistantMessage = data.content[0].text;
+                
+                removeLoadingMessage(loadingId);
+                
+                addMessage('assistant', assistantMessage);
+                conversationHistory.push({
+                    role: 'assistant',
+                    content: assistantMessage
+                });
+                
+                fullTranscript.push({
+                    role: 'assistant',
+                    content: assistantMessage,
+                    timestamp: new Date().toISOString()
+                });
+                
+            } catch (error) {
+                removeLoadingMessage(loadingId);
+                showError('Došlo je do greške: ' + error.message);
+                console.error('Full error:', error);
+            }
+            
+            isProcessing = false;
+        }
+
+        // ========================================
+        // UI FUNCTIONS
+        // ========================================
+        
+        function addMessage(role, content) {
+            const container = document.getElementById('chatContainer');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message ' + role;
+            
+            const label = document.createElement('div');
+            label.className = 'message-label';
+            label.textContent = role === 'user' ? 'Vi' : 'AI asistent';
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.textContent = content;
+            
+            messageDiv.appendChild(label);
+            messageDiv.appendChild(contentDiv);
+            container.appendChild(messageDiv);
+            
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function addLoadingMessage() {
+            const container = document.getElementById('chatContainer');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message assistant';
+            messageDiv.id = 'loading-message';
+            
+            const label = document.createElement('div');
+            label.className = 'message-label';
+            label.textContent = 'AI asistent';
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.innerHTML = 'Piše <span class="loading"></span>';
+            
+            messageDiv.appendChild(label);
+            messageDiv.appendChild(contentDiv);
+            container.appendChild(messageDiv);
+            
+            container.scrollTop = container.scrollHeight;
+            return 'loading-message';
+        }
+
+        function removeLoadingMessage(id) {
+            const element = document.getElementById(id);
+            if (element) element.remove();
+        }
+
+        function updateRoundCounter() {
+            const counter = document.getElementById('roundCounter');
+            counter.innerHTML = 'Runda razgovora: <strong>' + roundCount + '</strong> / Minimalno potrebno: <strong>' + CONFIG.minRounds + '</strong>';
+            
+            if (roundCount >= CONFIG.minRounds) {
+                document.getElementById('finishButton').disabled = false;
+            }
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.className = 'error';
+            errorDiv.textContent = message;
+            setTimeout(function() {
+                errorDiv.textContent = '';
+                errorDiv.className = '';
+            }, 5000);
+        }
+
+        function finishConversation() {
+            if (roundCount < CONFIG.minRounds) {
+                showError(`Molimo nastavite razgovor. Potrebno je minimalno ${CONFIG.minRounds} razmjene poruka (trenutno: ${roundCount}).`);
+                return;
+            }
+            
+            const transcriptData = {
+                participantId: CONFIG.participantId,
+                chatType: CONFIG.chatType,
+                theory: CONFIG.theory,
+                initialReasoning: CONFIG.reasoning,
+                transcript: fullTranscript,
+                roundCount: roundCount,
+                completedAt: new Date().toISOString()
+            };
+            
+            localStorage.setItem('chat_transcript_' + CONFIG.participantId, JSON.stringify(transcriptData));
+            
+            if (CONFIG.redirectUrl) {
+                const separator = CONFIG.redirectUrl.includes('?') ? '&' : '?';
+                const redirectWithData = CONFIG.redirectUrl + separator + 
+                    'pid=' + encodeURIComponent(CONFIG.participantId) +
+                    '&transcript=' + encodeURIComponent(JSON.stringify(transcriptData)) +
+                    '&rounds=' + roundCount;
+                
+                window.location.href = redirectWithData;
+            } else {
+                document.getElementById('chatContainer').innerHTML = 
+                    '<div style="padding: 40px; text-align: center;">' +
+                    '<h3>Hvala na sudjelovanju u razgovoru!</h3>' +
+                    '<p>Transcript ID: ' + CONFIG.participantId + '</p>' +
+                    '<p>Možete zatvoriti ovaj prozor.</p>' +
+                    '</div>';
+                document.getElementById('userInput').style.display = 'none';
+                document.getElementById('sendButton').style.display = 'none';
+                document.getElementById('finishButton').style.display = 'none';
+            }
+        }
+
+        // ========================================
+        // EVENT LISTENERS
+        // ========================================
+        
+        document.getElementById('sendButton').addEventListener('click', sendMessage);
+        document.getElementById('finishButton').addEventListener('click', finishConversation);
+        
+        document.getElementById('userInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        window.addEventListener('load', initialize);
+    </script>
+</body>
+</html>
