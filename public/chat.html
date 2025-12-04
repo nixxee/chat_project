@@ -187,12 +187,29 @@
             text-align: center;
             color: #dc2626;
         }
+
+        .saving-indicator {
+            text-align: center;
+            padding: 10px;
+            background: #fef3c7;
+            color: #92400e;
+            font-size: 14px;
+            display: none;
+        }
+
+        .saving-indicator.show {
+            display: block;
+        }
     </style>
 </head>
 <body>
     <div class="container" id="mainContainer">
         <div class="header">
             <h2>Razgovor s AI asistentom</h2>
+        </div>
+        
+        <div class="saving-indicator" id="savingIndicator">
+            💾 Spremanje podataka...
         </div>
         
         <div class="round-counter" id="roundCounter">
@@ -234,6 +251,9 @@
             // API Configuration
             apiKey: new URLSearchParams(window.location.search).get('apikey') || '',
             model: new URLSearchParams(window.location.search).get('model') || 'claude-sonnet-4-20250514',
+            
+            // Google Sheets URL for saving transcripts
+            sheetsUrl: decodeURIComponent(new URLSearchParams(window.location.search).get('sheetsurl') || ''),
             
             // Research parameters
             participantId: new URLSearchParams(window.location.search).get('pid') || '',
@@ -290,7 +310,7 @@
                     <p>${message}</p>
                     <br>
                     <p><strong>Primjer URL-a:</strong></p>
-                    <code>chat.html?apikey=sk-xxx&type=persuade_against&theory=Teorija&reasoning=Razlog&pid=P123</code>
+                    <code>chat.html?apikey=sk-xxx&type=persuade_against&theory=Teorija&reasoning=Razlog&pid=P123&sheetsurl=https://script.google.com/.../exec</code>
                 </div>
             `;
         }
@@ -425,6 +445,45 @@
         }
 
         // ========================================
+        // SAVE TO GOOGLE SHEETS
+        // ========================================
+        
+        async function saveToGoogleSheets(transcriptData) {
+            if (!CONFIG.sheetsUrl) {
+                console.log('Google Sheets URL not configured, skipping save');
+                return false;
+            }
+
+            const indicator = document.getElementById('savingIndicator');
+            indicator.classList.add('show');
+
+            try {
+                await fetch(CONFIG.sheetsUrl, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(transcriptData)
+                });
+
+                console.log('Data sent to Google Sheets successfully');
+                setTimeout(() => {
+                    indicator.classList.remove('show');
+                }, 2000);
+                return true;
+
+            } catch (error) {
+                console.error('Error saving to Google Sheets:', error);
+                indicator.textContent = '⚠️ Greška pri spremanju (nastavak će raditi)';
+                setTimeout(() => {
+                    indicator.classList.remove('show');
+                }, 3000);
+                return false;
+            }
+        }
+
+        // ========================================
         // UI FUNCTIONS
         // ========================================
         
@@ -494,7 +553,7 @@
             }, 5000);
         }
 
-        function finishConversation() {
+        async function finishConversation() {
             if (roundCount < CONFIG.minRounds) {
                 showError(`Molimo nastavite razgovor. Potrebno je minimalno ${CONFIG.minRounds} razmjene poruka (trenutno: ${roundCount}).`);
                 return;
@@ -510,22 +569,29 @@
                 completedAt: new Date().toISOString()
             };
             
+            // Save to localStorage as backup
             localStorage.setItem('chat_transcript_' + CONFIG.participantId, JSON.stringify(transcriptData));
+            
+            // Save to Google Sheets
+            await saveToGoogleSheets(transcriptData);
             
             if (CONFIG.redirectUrl) {
                 const separator = CONFIG.redirectUrl.includes('?') ? '&' : '?';
                 const redirectWithData = CONFIG.redirectUrl + separator + 
                     'pid=' + encodeURIComponent(CONFIG.participantId) +
-                    '&transcript=' + encodeURIComponent(JSON.stringify(transcriptData)) +
-                    '&rounds=' + roundCount;
+                    '&rounds=' + roundCount +
+                    '&chat_completed=1';
                 
-                window.location.href = redirectWithData;
+                // Small delay to ensure Google Sheets save completes
+                setTimeout(() => {
+                    window.location.href = redirectWithData;
+                }, 1000);
             } else {
                 document.getElementById('chatContainer').innerHTML = 
                     '<div style="padding: 40px; text-align: center;">' +
                     '<h3>Hvala na sudjelovanju u razgovoru!</h3>' +
                     '<p>Transcript ID: ' + CONFIG.participantId + '</p>' +
-                    '<p>Možete zatvoriti ovaj prozor.</p>' +
+                    '<p>✅ Podaci uspješno spremljeni</p>' +
                     '</div>';
                 document.getElementById('userInput').style.display = 'none';
                 document.getElementById('sendButton').style.display = 'none';
