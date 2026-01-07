@@ -577,9 +577,11 @@
             
             if (CONFIG.redirectUrl) {
                 const separator = CONFIG.redirectUrl.includes('?') ? '&' : '?';
-                // Keep existing URL parameters and just add rounds and chat_completed
+                // Add pid, theory, rounds and chat_completed to redirect URL
                 const redirectWithData = CONFIG.redirectUrl + separator + 
-                    'rounds=' + roundCount +
+                    'pid=' + encodeURIComponent(CONFIG.participantId) +
+                    '&theory=' + encodeURIComponent(CONFIG.theory) +
+                    '&rounds=' + roundCount +
                     '&chat_completed=1';
                 
                 // Small delay to ensure Google Sheets save completes
